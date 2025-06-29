@@ -20,4 +20,11 @@ This is our level class which contains level details as well as the enemies in a
 
 ### Development notes
 
-Please don't try to run the program.
+Please don't try to run the program. The human developer will run and test it for you. Just focus on the code for this project!
+
+You can run the formatter via.
+`black .`
+or 
+`black scroller.py`
+
+
