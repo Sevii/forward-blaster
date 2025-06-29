@@ -162,15 +162,15 @@ class Player:
             bullets = []
             
             if self.has_shotgun and not self.has_machine_gun:
-                # Shotgun - shoot 3 bullets in a cone
+                # Shotgun - shoot 5 bullets in a cone
                 bullet_x = self.x + self.width
                 bullet_y = self.y + self.height // 2
                 
                 # Center bullet
                 bullets.append(Bullet(bullet_x, bullet_y, 0))
-                # Upper bullet (15 degrees up)
                 bullets.append(Bullet(bullet_x, bullet_y, -15))
-                # Lower bullet (15 degrees down)
+                bullets.append(Bullet(bullet_x, bullet_y, -5))
+                bullets.append(Bullet(bullet_x, bullet_y, 5))
                 bullets.append(Bullet(bullet_x, bullet_y, 15))
             else:
                 # Normal single bullet (or machine gun single bullet)
@@ -908,7 +908,7 @@ class Game:
             self.powerups.clear()
             # Restore player health for new level
             self.player.hp = min(self.player.max_hp, self.player.hp + 60)
-        elif self.score >= 600 and self.level == 3:
+        elif self.score >= 500 and self.level == 3:
             self.level = 4
             self.max_level_reached = max(self.max_level_reached, 4)
             self.level_transition = True
@@ -924,7 +924,7 @@ class Game:
             self.powerups.clear()
             # Restore player health for new level
             self.player.hp = min(self.player.max_hp, self.player.hp + 50)
-        elif self.score >= 400 and self.level == 2:
+        elif self.score >= 250 and self.level == 2:
             self.level = 3
             self.max_level_reached = max(self.max_level_reached, 3)
             self.level_transition = True
@@ -940,7 +940,7 @@ class Game:
             self.powerups.clear()
             # Restore player health for new level
             self.player.hp = min(self.player.max_hp, self.player.hp + 40)
-        elif self.score >= 200 and self.level == 1:
+        elif self.score >= 100 and self.level == 1:
             self.level = 2
             self.max_level_reached = max(self.max_level_reached, 2)
             self.level_transition = True
@@ -1048,7 +1048,7 @@ class Game:
         # Handle level transition
         if self.level_transition:
             current_time = pygame.time.get_ticks()
-            if current_time - self.level_transition_timer > 3000:  # 3 second transition
+            if current_time - self.level_transition_timer > 2000:  # 3 second transition
                 self.level_transition = False
             return
             
