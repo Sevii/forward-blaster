@@ -4,6 +4,7 @@ import math
 
 from monsters import Enemy, BossEnemy, FlyingEnemy, JumpingBoss
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, WHITE, BLACK, RED, GREEN, BLUE, YELLOW, GRAY, PURPLE, ORANGE, DARK_GRAY, BROWN, CYAN
+from level import Level, Platform
 # Initialize Pygame
 pygame.init()
 
@@ -36,6 +37,9 @@ class Player:
         self.has_penetrator = False
         self.penetrator_timer = 0
         self.penetrator_duration = 12000  # 12 seconds
+        self.has_rain = False
+        self.rain_timer = 0
+        self.rain_duration = 10000  # 10 seconds
         
     def update(self, keys, platforms, level=1):
         # Handle invulnerability
@@ -61,6 +65,12 @@ class Player:
             current_time = pygame.time.get_ticks()
             if current_time - self.penetrator_timer > self.penetrator_duration:
                 self.has_penetrator = False
+        
+        # Handle rain power-up timer
+        if self.has_rain:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.rain_timer > self.rain_duration:
+                self.has_rain = False
         
         # Horizontal movement
         self.vel_x = 0
@@ -109,8 +119,8 @@ class Player:
                     self.y = platform.y + platform.height
                     self.vel_y = 0
         
-        # Ground collision (no floor on level 6)
-        if level != 6:
+        # Ground collision (check if level has floor)
+        if level != 6:  # Keep original logic for now, will be improved later
             ground_y = SCREEN_HEIGHT - 100
             if self.y + self.height >= ground_y:
                 self.y = ground_y - self.height
@@ -150,6 +160,10 @@ class Player:
         self.has_penetrator = True
         self.penetrator_timer = pygame.time.get_ticks()
     
+    def pickup_rain(self):
+        self.has_rain = True
+        self.rain_timer = pygame.time.get_ticks()
+    
     def shoot(self):
         current_time = pygame.time.get_ticks()
         
@@ -162,7 +176,15 @@ class Player:
             self.last_shot = current_time
             bullets = []
             
-            if self.has_penetrator and not self.has_machine_gun:
+            if self.has_rain and not self.has_machine_gun:
+                # Rain - shoot 10 bullets falling from above, spread out more
+                player_front_x = self.x + self.width + 10
+                for i in range(15):
+                    # Double the spacing (8 pixels apart instead of 4)
+                    bullet_x = player_front_x + (i * 8)
+                    bullet_y = -20  # Start above screen
+                    bullets.append(RainBullet(bullet_x, bullet_y))
+            elif self.has_penetrator and not self.has_machine_gun:
                 # Penetrator - shoot 2 large penetrating bullets with horizontal offset
                 bullet_x1 = self.x + self.width
                 bullet_x2 = self.x + self.width + 10  # Horizontal offset
@@ -306,6 +328,27 @@ class PenetratingBullet:
         # Inner core
         pygame.draw.ellipse(screen, WHITE, (self.x + 4, self.y + 2, self.width - 8, self.height - 4))
 
+class RainBullet:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.width = 6
+        self.height = 12
+        self.speed = 8
+        
+    def update(self):
+        self.y += self.speed
+        
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, self.width, self.height)
+        
+    def draw(self, screen):
+        # Draw as a blue/cyan falling bullet
+        pygame.draw.ellipse(screen, CYAN, self.get_rect())
+        # Add a white core
+        core_rect = pygame.Rect(self.x + 1, self.y + 2, self.width - 2, self.height - 4)
+        pygame.draw.ellipse(screen, WHITE, core_rect)
+
 class PowerUp:
     def __init__(self, x, y, power_type="shotgun"):
         self.x = x
@@ -387,25 +430,26 @@ class PowerUp:
                 text = font.render("P", True, WHITE)
                 text_rect = text.get_rect(center=(center_x, center_y))
                 screen.blit(text, text_rect)
+                
+            elif self.power_type == "rain":
+                # Draw rain power-up
+                # Outer glow (blue/cyan theme)
+                for i in range(3):
+                    glow_color = (50 + i * 30, 150 + i * 30, 255)
+                    pygame.draw.circle(screen, glow_color, (center_x, center_y), 18 - i * 3)
+                
+                # Main icon (rain drops falling)
+                for j in range(4):
+                    drop_x = center_x - 6 + j * 4
+                    drop_y = center_y - 6 + j * 2
+                    pygame.draw.ellipse(screen, CYAN, (drop_x, drop_y, 3, 8))
+                
+                # "R" for rain
+                font = pygame.font.Font(None, 20)
+                text = font.render("R", True, WHITE)
+                text_rect = text.get_rect(center=(center_x, center_y + 4))
+                screen.blit(text, text_rect)
 
-class Platform:
-    def __init__(self, x, y, width, height):
-        self.x = x
-        self.y = y
-        self.width = width
-        self.height = height
-        
-    def get_rect(self):
-        return pygame.Rect(self.x, self.y, self.width, self.height)
-        
-    def draw(self, screen):
-        # Draw platform with a nice gradient effect
-        rect = self.get_rect()
-        pygame.draw.rect(screen, (101, 67, 33), rect)  # Brown color
-        # Add highlight on top
-        pygame.draw.rect(screen, (139, 69, 19), (self.x, self.y, self.width, 4))
-        # Add shadow on bottom
-        pygame.draw.rect(screen, (62, 39, 35), (self.x, self.y + self.height - 4, self.width, 4))
 
 
 class Game:
@@ -417,94 +461,32 @@ class Game:
         
         self.player = Player(50, SCREEN_HEIGHT - 160)
         self.bullets = []
+        self.rain_bullets = []
         self.enemies = []
         self.flying_enemies = []
         self.boss_enemies = []
         self.jumping_bosses = []
         self.homing_missiles = []
         self.bombs = []
-        self.platforms = []
         self.powerups = []
         self.score = 0
-        self.level = 1
+        self.level_number = 1
         self.max_level_reached = 1
         self.enemy_spawn_timer = 0
-        self.enemy_spawn_delay = 2000  # milliseconds
         self.flying_enemy_spawn_timer = 0
-        self.flying_enemy_spawn_delay = 3000  # milliseconds
         self.boss_enemy_spawn_timer = 0
-        self.boss_enemy_spawn_delay = 8000  # 8 seconds between boss enemies
         self.jumping_boss_spawn_timer = 0
-        self.jumping_boss_spawn_delay = 12000  # 12 seconds between jumping bosses
         self.powerup_spawn_timer = 0
-        self.powerup_spawn_delay = 10000  # 10 seconds between power-ups
         self.game_over = False
         self.level_transition = False
         self.level_transition_timer = 0
         
-        # Create platforms for level 1
-        self.create_platforms()
+        # Create level object
+        self.current_level = Level(self.level_number)
         
         # Font for UI
         self.font = pygame.font.Font(None, 36)
         
-    def create_platforms(self):
-        if self.level == 1:
-            # Level 1 platforms (original)
-            platforms = [
-                Platform(200, 400, 120, 20),
-                Platform(400, 350, 100, 20),
-            ]
-        elif self.level == 2:
-            # Level 2 platforms (3 platforms)
-            platforms = [
-                Platform(300, 350, 150, 20),
-                Platform(600, 250, 150, 20),
-                Platform(150, 150, 150, 20),
-            ]
-        elif self.level == 3:
-            # Level 3 platforms (4 platforms)
-            platforms = [
-                Platform(200, 400, 120, 20),
-                Platform(500, 300, 120, 20),
-                Platform(100, 200, 120, 20),
-                Platform(700, 150, 120, 20),
-            ]
-        elif self.level == 4:
-            # Level 4 platforms (5 platforms - more vertical challenge)
-            platforms = [
-                Platform(100, 450, 100, 20),
-                Platform(300, 380, 120, 20),
-                Platform(550, 300, 100, 20),
-                Platform(750, 220, 120, 20),
-                Platform(200, 150, 100, 20),
-            ]
-        elif self.level == 5:
-            # Level 5 platforms (4 platforms)
-            platforms = [
-                Platform(150, 400, 140, 20),
-                Platform(400, 300, 140, 20),
-                Platform(650, 200, 140, 20),
-                Platform(250, 150, 140, 20),
-            ]
-        elif self.level == 6:
-            # Level 6 - Sky Level: No floor, 5 platforms, only flying enemies
-            platforms = [
-                Platform(50, 480, 120, 20),   # Bottom left
-                Platform(250, 380, 130, 20),  # Mid-left
-                Platform(450, 280, 140, 20),  # Center
-                Platform(680, 380, 130, 20),  # Mid-right
-                Platform(830, 480, 120, 20),  # Bottom right
-            ]
-        else:  # Level 7+ - Final Boss Level with all enemies
-            # Default platforms for levels beyond 6
-            platforms = [
-                Platform(150, 400, 140, 20),
-                Platform(400, 300, 140, 20),
-                Platform(650, 200, 140, 20),
-                Platform(250, 150, 140, 20),
-            ]
-        self.platforms = platforms
         
     def handle_events(self):
         for event in pygame.event.get():
@@ -514,7 +496,12 @@ class Game:
                 if event.key == pygame.K_SPACE:
                     if not self.game_over and not self.level_transition:
                         bullets = self.player.shoot()
-                        self.bullets.extend(bullets)
+                        # Separate rain bullets from regular bullets
+                        for bullet in bullets:
+                            if isinstance(bullet, RainBullet):
+                                self.rain_bullets.append(bullet)
+                            else:
+                                self.bullets.append(bullet)
                 elif event.key == pygame.K_r and self.game_over:
                     # Restart game
                     self.restart_game()
@@ -522,6 +509,7 @@ class Game:
     def restart_game(self):
         self.player = Player(50, SCREEN_HEIGHT - 160)
         self.bullets = []
+        self.rain_bullets = []
         self.enemies = []
         self.flying_enemies = []
         self.boss_enemies = []
@@ -530,216 +518,85 @@ class Game:
         self.bombs = []
         self.powerups = []
         self.score = self.max_level_reached * 100
-        self.level = self.max_level_reached
+        self.level_number = self.max_level_reached
         self.enemy_spawn_timer = 0
-        self.enemy_spawn_delay = 2000
         self.flying_enemy_spawn_timer = 0
-        self.flying_enemy_spawn_delay = 3000
         self.boss_enemy_spawn_timer = 0
-        self.boss_enemy_spawn_delay = 8000
         self.jumping_boss_spawn_timer = 0
-        self.jumping_boss_spawn_delay = 12000
         self.powerup_spawn_timer = 0
-        self.powerup_spawn_delay = 10000
         self.game_over = False
         self.level_transition = False
         self.level_transition_timer = 0
-        self.create_platforms()
+        self.current_level = Level(self.level_number)
         
     def check_level_progression(self):
-        if self.score >= 2000 and self.level == 6:
-            self.level = 7
-            self.max_level_reached = max(self.max_level_reached, 7)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 70)
-        elif self.score >= 1500 and self.level == 5:
-            self.level = 6
-            self.max_level_reached = max(self.max_level_reached, 6)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 65)
-        elif self.score >= 1000 and self.level == 4:
-            self.level = 5
-            self.max_level_reached = max(self.max_level_reached, 5)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 60)
-        elif self.score >= 500 and self.level == 3:
-            self.level = 4
-            self.max_level_reached = max(self.max_level_reached, 4)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 50)
-        elif self.score >= 175 and self.level == 2:
-            self.level = 3
-            self.max_level_reached = max(self.max_level_reached, 3)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 40)
-        elif self.score >= 75 and self.level == 1:
-            self.level = 2
-            self.max_level_reached = max(self.max_level_reached, 2)
-            self.level_transition = True
-            self.level_transition_timer = pygame.time.get_ticks()
-            self.create_platforms()
-            # Clear existing enemies when transitioning
-            self.enemies.clear()
-            self.flying_enemies.clear()
-            self.boss_enemies.clear()
-            self.jumping_bosses.clear()
-            self.homing_missiles.clear()
-            self.bombs.clear()
-            self.powerups.clear()
-            # Restore player health for new level
-            self.player.hp = min(self.player.max_hp, self.player.hp + 30)
+        level_thresholds = {1: 75, 2: 175, 3: 500, 4: 1000, 5: 1500, 6: 2000}
+        health_bonuses = {2: 30, 3: 40, 4: 50, 5: 60, 6: 65, 7: 70}
+        
+        for level, threshold in level_thresholds.items():
+            if self.score >= threshold and self.level_number == level:
+                self.level_number = level + 1
+                self.max_level_reached = max(self.max_level_reached, self.level_number)
+                self.level_transition = True
+                self.level_transition_timer = pygame.time.get_ticks()
+                self.current_level = Level(self.level_number)
+                # Clear existing enemies when transitioning
+                self.enemies.clear()
+                self.flying_enemies.clear()
+                self.boss_enemies.clear()
+                self.jumping_bosses.clear()
+                self.homing_missiles.clear()
+                self.bombs.clear()
+                self.powerups.clear()
+                self.rain_bullets.clear()
+                # Restore player health for new level
+                health_bonus = health_bonuses.get(self.level_number, 70)
+                self.player.hp = min(self.player.max_hp, self.player.hp + health_bonus)
+                break
+    
             
     def spawn_powerup(self):
-        if self.level < 3:  # Only spawn power-ups in level 3+
+        if not self.current_level.powerups_enabled:
             return
             
         current_time = pygame.time.get_ticks()
-        if current_time - self.powerup_spawn_timer > self.powerup_spawn_delay:
+        spawn_delay = self.current_level.get_spawn_delay('powerup_spawn_delay')
+        if current_time - self.powerup_spawn_timer > spawn_delay:
             self.powerup_spawn_timer = current_time
             
             # Choose a random platform to spawn the power-up on
-            if self.platforms:
-                platform = random.choice(self.platforms)
+            if self.current_level.platforms:
+                platform = random.choice(self.current_level.platforms)
                 powerup_x = platform.x + platform.width // 2 - 15  # Center on platform
                 powerup_y = platform.y - 35  # Above the platform
                 
-                # Randomly choose between shotgun, machine gun, and penetrator
-                power_type = random.choice(["shotgun", "machine_gun", "penetrator"])
+                # Randomly choose between shotgun, machine gun, penetrator, and rain
+                power_type = random.choice(["shotgun", "machine_gun", "penetrator", "rain"])
                 powerup = PowerUp(powerup_x, powerup_y, power_type)
                 self.powerups.append(powerup)
             
     def spawn_enemy(self):
-        if self.level == 6:  # No regular enemies in level 6
-            return
-        elif self.level >= 7:  # Spawn regular enemies in level 7+ (final boss level)
-            current_time = pygame.time.get_ticks()
-            if current_time - self.enemy_spawn_timer > self.enemy_spawn_delay:
-                self.enemy_spawn_timer = current_time
-                enemy_y = SCREEN_HEIGHT - 140
-                enemy = Enemy(SCREEN_WIDTH, enemy_y)
-                self.enemies.append(enemy)
-        else:
-            current_time = pygame.time.get_ticks()
-            if current_time - self.enemy_spawn_timer > self.enemy_spawn_delay:
-                self.enemy_spawn_timer = current_time
-                enemy_y = SCREEN_HEIGHT - 140
-                enemy = Enemy(SCREEN_WIDTH, enemy_y)
-                self.enemies.append(enemy)
+        current_time = pygame.time.get_ticks()
+        enemy, self.enemy_spawn_timer = self.current_level.spawn_enemy(current_time, self.enemy_spawn_timer)
+        if enemy:
+            self.enemies.append(enemy)
             
     def spawn_flying_enemy(self):
-        if self.level < 2 or self.level == 4:  # Only spawn flying enemies in level 2-3, 5, 6, and 7+
-            return
-        elif self.level == 6:  # Level 6 - Only flying enemies, more frequent spawning
-            current_time = pygame.time.get_ticks()
-            if current_time - self.flying_enemy_spawn_timer > self.flying_enemy_spawn_delay // 2:  # Spawn twice as fast
-                self.flying_enemy_spawn_timer = current_time
-                enemy_y = random.randint(50, SCREEN_HEIGHT - 100)  # Can spawn anywhere in vertical space
-                flying_enemy = FlyingEnemy(SCREEN_WIDTH, enemy_y)
-                self.flying_enemies.append(flying_enemy)
-        elif self.level >= 7:  # Spawn flying enemies in level 7+ (final boss level)
-            current_time = pygame.time.get_ticks()
-            if current_time - self.flying_enemy_spawn_timer > self.flying_enemy_spawn_delay:
-                self.flying_enemy_spawn_timer = current_time
-                enemy_y = random.randint(100, SCREEN_HEIGHT - 200)
-                flying_enemy = FlyingEnemy(SCREEN_WIDTH, enemy_y)
-                self.flying_enemies.append(flying_enemy)
-        else:
-            current_time = pygame.time.get_ticks()
-            if current_time - self.flying_enemy_spawn_timer > self.flying_enemy_spawn_delay:
-                self.flying_enemy_spawn_timer = current_time
-                enemy_y = random.randint(100, SCREEN_HEIGHT - 200)
-                flying_enemy = FlyingEnemy(SCREEN_WIDTH, enemy_y)
-                self.flying_enemies.append(flying_enemy)
+        current_time = pygame.time.get_ticks()
+        flying_enemy, self.flying_enemy_spawn_timer = self.current_level.spawn_flying_enemy(current_time, self.flying_enemy_spawn_timer)
+        if flying_enemy:
+            self.flying_enemies.append(flying_enemy)
             
     def spawn_boss_enemy(self):
-        if self.level < 3 or self.level == 4:  # Only spawn boss enemies in level 3, 5,6, and 7+
-            return
-        elif self.level >= 7:  # Spawn boss enemies in level 7+ (final boss level)
-            current_time = pygame.time.get_ticks()
-            if current_time - self.boss_enemy_spawn_timer > self.boss_enemy_spawn_delay:
-                self.boss_enemy_spawn_timer = current_time
-                enemy_y = random.randint(80, SCREEN_HEIGHT - 250)
-                boss_enemy = BossEnemy(SCREEN_WIDTH, enemy_y)
-                self.boss_enemies.append(boss_enemy)
-        elif self.level == 5:  # Level 5 boss enemies
-            current_time = pygame.time.get_ticks()
-            if current_time - self.boss_enemy_spawn_timer > self.boss_enemy_spawn_delay:
-                self.boss_enemy_spawn_timer = current_time
-                enemy_y = random.randint(80, SCREEN_HEIGHT - 250)
-                boss_enemy = BossEnemy(SCREEN_WIDTH, enemy_y)
-                self.boss_enemies.append(boss_enemy)
-        else:  # Level 3 boss enemies
-            current_time = pygame.time.get_ticks()
-            if current_time - self.boss_enemy_spawn_timer > self.boss_enemy_spawn_delay:
-                self.boss_enemy_spawn_timer = current_time
-                enemy_y = random.randint(80, SCREEN_HEIGHT - 250)
-                boss_enemy = BossEnemy(SCREEN_WIDTH, enemy_y)
-                self.boss_enemies.append(boss_enemy)
+        current_time = pygame.time.get_ticks()
+        boss_enemy, self.boss_enemy_spawn_timer = self.current_level.spawn_boss_enemy(current_time, self.boss_enemy_spawn_timer)
+        if boss_enemy:
+            self.boss_enemies.append(boss_enemy)
             
     def spawn_jumping_boss(self):
-        if self.level < 4 or self.level == 6:  # Only spawn jumping bosses in level 4, 5, and 7+
-            return
-            
         current_time = pygame.time.get_ticks()
-        if current_time - self.jumping_boss_spawn_timer > self.jumping_boss_spawn_delay:
-            self.jumping_boss_spawn_timer = current_time
-            enemy_y = SCREEN_HEIGHT - 200  # Start on ground
-            jumping_boss = JumpingBoss(SCREEN_WIDTH, enemy_y)
+        jumping_boss, self.jumping_boss_spawn_timer = self.current_level.spawn_jumping_boss(current_time, self.jumping_boss_spawn_timer)
+        if jumping_boss:
             self.jumping_bosses.append(jumping_boss)
             
     def update(self):
@@ -754,7 +611,7 @@ class Game:
             return
             
         keys = pygame.key.get_pressed()
-        self.player.update(keys, self.platforms, self.level)
+        self.player.update(keys, self.current_level.platforms, self.level_number)
         
         # Automatic machine gun firing
         if self.player.has_machine_gun:
@@ -774,6 +631,12 @@ class Game:
             bullet.update()
             if bullet.x > SCREEN_WIDTH or bullet.y < 0 or bullet.y > SCREEN_HEIGHT:
                 self.bullets.remove(bullet)
+        
+        # Update rain bullets
+        for rain_bullet in self.rain_bullets[:]:
+            rain_bullet.update()
+            if rain_bullet.y > SCREEN_HEIGHT:
+                self.rain_bullets.remove(rain_bullet)
         
         # Update power-ups
         for powerup in self.powerups[:]:
@@ -841,6 +704,8 @@ class Game:
                     self.player.pickup_machine_gun()
                 elif powerup.power_type == "penetrator":
                     self.player.pickup_penetrator()
+                elif powerup.power_type == "rain":
+                    self.player.pickup_rain()
                 
         # Check bullet-enemy collisions (ground enemies)
         for bullet in self.bullets[:]:
@@ -917,6 +782,44 @@ class Game:
                             self.jumping_bosses.remove(jumping_boss)
                             self.score += 100  # Jumping bosses worth even more points
                         break
+                        
+        # Check rain bullet-enemy collisions (ground enemies)
+        for rain_bullet in self.rain_bullets[:]:
+            for enemy in self.enemies[:]:
+                if rain_bullet.get_rect().colliderect(enemy.get_rect()):
+                    self.rain_bullets.remove(rain_bullet)
+                    self.enemies.remove(enemy)
+                    self.score += 10
+                    break
+                    
+        # Check rain bullet-flying enemy collisions
+        for rain_bullet in self.rain_bullets[:]:
+            for flying_enemy in self.flying_enemies[:]:
+                if rain_bullet.get_rect().colliderect(flying_enemy.get_rect()):
+                    self.rain_bullets.remove(rain_bullet)
+                    self.flying_enemies.remove(flying_enemy)
+                    self.score += 15
+                    break
+                    
+        # Check rain bullet-boss enemy collisions
+        for rain_bullet in self.rain_bullets[:]:
+            for boss_enemy in self.boss_enemies[:]:
+                if rain_bullet.get_rect().colliderect(boss_enemy.get_rect()):
+                    self.rain_bullets.remove(rain_bullet)
+                    if boss_enemy.take_damage():
+                        self.boss_enemies.remove(boss_enemy)
+                        self.score += 50
+                    break
+                    
+        # Check rain bullet-jumping boss collisions
+        for rain_bullet in self.rain_bullets[:]:
+            for jumping_boss in self.jumping_bosses[:]:
+                if rain_bullet.get_rect().colliderect(jumping_boss.get_rect()):
+                    self.rain_bullets.remove(rain_bullet)
+                    if jumping_boss.take_damage():
+                        self.jumping_bosses.remove(jumping_boss)
+                        self.score += 100
+                    break
                     
         # Check player-enemy collisions (ground enemies)
         player_rect = self.player.get_rect()
@@ -962,109 +865,15 @@ class Game:
         self.spawn_jumping_boss()
         self.spawn_powerup()
         
-        # Increase difficulty over time
-        if self.score > 0 and self.score % 100 == 0:
-            self.enemy_spawn_delay = max(500, self.enemy_spawn_delay - 50)
-            if self.level >= 2:
-                self.flying_enemy_spawn_delay = max(1000, self.flying_enemy_spawn_delay - 100)
-            if self.level >= 3:
-                self.boss_enemy_spawn_delay = max(4000, self.boss_enemy_spawn_delay - 200)
-            if self.level >= 4:
-                self.jumping_boss_spawn_delay = max(6000, self.jumping_boss_spawn_delay - 300)
-            if self.level >= 5:  # Extra difficulty scaling for final level
-                self.enemy_spawn_delay = max(300, self.enemy_spawn_delay - 25)
-                self.flying_enemy_spawn_delay = max(800, self.flying_enemy_spawn_delay - 50)
-                self.boss_enemy_spawn_delay = max(3000, self.boss_enemy_spawn_delay - 100)
-                self.jumping_boss_spawn_delay = max(5000, self.jumping_boss_spawn_delay - 150)
             
     def draw_background(self):
-        # Sky gradient (different colors for different levels)
-        if self.level == 1:
-            base_color = 135
-        elif self.level == 2:
-            base_color = 100
-        elif self.level == 3:
-            base_color = 80  # Even darker for level 3
-        elif self.level == 4:
-            base_color = 60  # Very dark and ominous for level 4
-        elif self.level == 5:
-            base_color = 40  # Dark apocalyptic sky for level 5
-        elif self.level == 6:
-            base_color = 200  # Bright sky level - high altitude
-        else:  # Level 7+
-            base_color = 20  # Extremely dark apocalyptic sky for final levels
-            
-        # Level 6 has no ground, so draw sky for entire screen
-        sky_height = SCREEN_HEIGHT if self.level == 6 else SCREEN_HEIGHT - 100
-        for y in range(sky_height):
-            if self.level == 1:
-                color_intensity = int(base_color + (120 * y / sky_height))
-                color = (min(255, color_intensity), min(255, color_intensity + 20), 255)
-            elif self.level == 2:
-                color_intensity = int(base_color + (80 * y / sky_height))
-                color = (min(200, color_intensity + 20), min(200, color_intensity), min(255, color_intensity + 40))
-            elif self.level == 3:  # Level 3 - very dark, stormy sky
-                color_intensity = int(base_color + (60 * y / sky_height))
-                color = (min(150, color_intensity + 30), min(150, color_intensity), min(200, color_intensity + 20))
-            elif self.level == 4:  # Level 4 - apocalyptic sky
-                color_intensity = int(base_color + (40 * y / sky_height))
-                color = (min(120, color_intensity + 40), min(100, color_intensity), min(150, color_intensity + 10))
-            elif self.level == 5:  # Level 5 - dark sky
-                color_intensity = int(base_color + (30 * y / sky_height))
-                color = (min(100, color_intensity + 50), min(80, color_intensity), min(120, color_intensity + 5))
-            elif self.level == 6:  # Level 6 - bright sky level
-                color_intensity = int(base_color + (50 * y / sky_height))
-                color = (min(255, color_intensity - 50), min(255, color_intensity), 255)
-            else:  # Level 7+ - extremely dark
-                color_intensity = int(base_color + (20 * y / sky_height))
-                color = (min(80, color_intensity + 60), min(60, color_intensity), min(100, color_intensity + 5))
-                
-            pygame.draw.line(self.screen, color, (0, y), (SCREEN_WIDTH, y))
-            
-        # Ground (no ground for level 6)
-        if self.level != 6:
-            if self.level == 1:
-                ground_color = GREEN
-            elif self.level == 2:
-                ground_color = (80, 120, 80)  # Darker green for level 2
-            elif self.level == 3:
-                ground_color = (60, 80, 60)  # Even darker for level 3
-            elif self.level == 4:
-                ground_color = (40, 50, 40)  # Very dark, corrupted ground for level 4
-            elif self.level == 5:
-                ground_color = (30, 30, 30)  # Almost black, desolate ground for level 5
-            else:  # Level 7+
-                ground_color = (20, 20, 20)  # Extremely dark ground for final levels
-                
-            pygame.draw.rect(self.screen, ground_color, (0, SCREEN_HEIGHT - 100, SCREEN_WIDTH, 100))
-        
-        # Simple clouds
-        cloud_positions = [(150, 80), (400, 60), (650, 90), (850, 70)]
-        if self.level == 1:
-            cloud_color = WHITE
-        elif self.level == 2:
-            cloud_color = (200, 200, 200)  # Grayer clouds for level 2
-        elif self.level == 3:
-            cloud_color = (150, 150, 150)  # Very dark clouds for level 3
-        elif self.level == 4:
-            cloud_color = (100, 100, 120)  # Ominous purplish clouds for level 4
-        elif self.level == 5:
-            cloud_color = (80, 80, 100)  # Very dark, menacing clouds for level 5
-        elif self.level == 6:
-            cloud_color = (255, 255, 255)  # Bright white clouds for sky level
-        else:  # Level 7+
-            cloud_color = (60, 60, 80)  # Extremely dark clouds for final levels
-            
-        for cx, cy in cloud_positions:
-            pygame.draw.circle(self.screen, cloud_color, (cx, cy), 30)
-            pygame.draw.circle(self.screen, cloud_color, (cx - 20, cy), 25)
-            pygame.draw.circle(self.screen, cloud_color, (cx + 20, cy), 25)
+        self.current_level.draw_background(self.screen)
             
     def draw_ui(self):
         score_text = self.font.render(f"Score: {self.score}", True, BLACK)
         self.screen.blit(score_text, (10, 10))
         
-        level_text = self.font.render(f"Level: {self.level}", True, BLACK)
+        level_text = self.font.render(f"Level: {self.level_number}", True, BLACK)
         self.screen.blit(level_text, (10, 80))
         
         # Draw health bar
@@ -1165,6 +974,39 @@ class Game:
             # Border
             pygame.draw.rect(self.screen, BLACK, (timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height), 2)
         
+        # Rain power-up indicator
+        if self.player.has_rain:
+            remaining_time = self.player.rain_duration - (pygame.time.get_ticks() - self.player.rain_timer)
+            remaining_seconds = max(0, remaining_time // 1000)
+            
+            # Calculate position based on active power-ups
+            ui_y_offset = 110
+            if self.player.has_shotgun:
+                ui_y_offset += 50
+            if self.player.has_machine_gun:
+                ui_y_offset += 50
+            if self.player.has_penetrator:
+                ui_y_offset += 50
+            
+            rain_text = pygame.font.Font(None, 28).render(f"RAIN: {remaining_seconds}s", True, CYAN)
+            self.screen.blit(rain_text, (10, ui_y_offset))
+            
+            # Rain timer bar
+            timer_bar_width = 150
+            timer_bar_height = 10
+            timer_bar_x = 10
+            timer_bar_y = ui_y_offset + 25
+            
+            # Background
+            pygame.draw.rect(self.screen, DARK_GRAY, (timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height))
+            
+            # Timer
+            timer_width = int((remaining_time / self.player.rain_duration) * timer_bar_width)
+            pygame.draw.rect(self.screen, CYAN, (timer_bar_x, timer_bar_y, timer_width, timer_bar_height))
+            
+            # Border
+            pygame.draw.rect(self.screen, BLACK, (timer_bar_x, timer_bar_y, timer_bar_width, timer_bar_height), 2)
+        
 
         # Level transition screen
         if self.level_transition:
@@ -1173,122 +1015,40 @@ class Game:
             overlay.fill(BLACK)
             self.screen.blit(overlay, (0, 0))
             
-            if self.level == 2:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 2!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 50))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = self.font.render("Flying enemies incoming!", True, RED)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
+            transition_data = self.current_level.get_level_transition_text()
+            
+            level_up_text = pygame.font.Font(None, 72).render(transition_data['title'], True, YELLOW)
+            text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 120))
+            self.screen.blit(level_up_text, text_rect)
+            
+            y_offset = -70
+            for warning in transition_data['warnings']:
+                if 'LEVEL!' in warning or 'FINAL' in warning or 'ULTIMATE' in warning:
+                    font_size = 48
+                    color = RED
+                elif 'SKY LEVEL!' in warning:
+                    font_size = 48
+                    color = CYAN
+                elif 'NO FLOOR' in warning:
+                    font_size = 32
+                    color = RED
+                else:
+                    font_size = 28
+                    color = ORANGE if 'hits' in warning or 'MISSILES' in warning else WHITE
+                    
+                warning_text = pygame.font.Font(None, font_size).render(warning, True, color)
+                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + y_offset))
                 self.screen.blit(warning_text, warning_rect)
-            elif self.level == 3:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 3!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 80))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = self.font.render("Boss birds with bombs!", True, RED)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 30))
-                self.screen.blit(warning_text, warning_rect)
-                
-                warning_text2 = pygame.font.Font(None, 28).render("They take 2 hits to kill!", True, ORANGE)
-                warning_rect2 = warning_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
-                self.screen.blit(warning_text2, warning_rect2)
-                
-                powerup_text = pygame.font.Font(None, 32).render("Shotgun power-ups available!", True, CYAN)
-                powerup_rect = powerup_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 30))
-                self.screen.blit(powerup_text, powerup_rect)
-            elif self.level == 4:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 4!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 100))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = self.font.render("JUMPING MECH BOSSES!", True, RED)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 50))
-                self.screen.blit(warning_text, warning_rect)
-                
-                warning_text2 = pygame.font.Font(None, 28).render("They shoot HOMING MISSILES!", True, ORANGE)
-                warning_rect2 = warning_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 20))
-                self.screen.blit(warning_text2, warning_rect2)
-                
-                warning_text3 = pygame.font.Font(None, 28).render("Takes 5 hits to destroy!", True, ORANGE)
-                warning_rect3 = warning_text3.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 10))
-                self.screen.blit(warning_text3, warning_rect3)
-                
-                powerup_text = pygame.font.Font(None, 32).render("Shotgun power-ups still available!", True, CYAN)
-                powerup_rect = powerup_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 40))
-                self.screen.blit(powerup_text, powerup_rect)
-            elif self.level == 5:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 5!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 120))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = pygame.font.Font(None, 48).render("FINAL BOSS LEVEL!", True, RED)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 70))
-                self.screen.blit(warning_text, warning_rect)
-                
-                warning_text2 = pygame.font.Font(None, 28).render("ALL ENEMY TYPES ATTACKING!", True, ORANGE)
-                warning_rect2 = warning_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 40))
-                self.screen.blit(warning_text2, warning_rect2)
-                
-                warning_text3 = pygame.font.Font(None, 28).render("Ground Enemies, Flying Enemies,", True, WHITE)
-                warning_rect3 = warning_text3.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 10))
-                self.screen.blit(warning_text3, warning_rect3)
-                
-                warning_text4 = pygame.font.Font(None, 28).render("Boss Birds & Jumping Mechs!", True, WHITE)
-                warning_rect4 = warning_text4.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 15))
-                self.screen.blit(warning_text4, warning_rect4)
-                
-                powerup_text = pygame.font.Font(None, 32).render("All power-ups available!", True, CYAN)
-                powerup_rect = powerup_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 45))
-                self.screen.blit(powerup_text, powerup_rect)
-            elif self.level == 6:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 6!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 120))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = pygame.font.Font(None, 48).render("SKY LEVEL!", True, CYAN)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 70))
-                self.screen.blit(warning_text, warning_rect)
-                
-                warning_text2 = pygame.font.Font(None, 32).render("NO FLOOR - DON'T FALL!", True, RED)
-                warning_rect2 = warning_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 40))
-                self.screen.blit(warning_text2, warning_rect2)
-                
-                warning_text3 = pygame.font.Font(None, 28).render("Only flying enemies attack!", True, ORANGE)
-                warning_rect3 = warning_text3.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 10))
-                self.screen.blit(warning_text3, warning_rect3)
-                
-                warning_text4 = pygame.font.Font(None, 28).render("Use platforms to stay airborne!", True, WHITE)
-                warning_rect4 = warning_text4.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 15))
-                self.screen.blit(warning_text4, warning_rect4)
-                
-                powerup_text = pygame.font.Font(None, 32).render("All power-ups still available!", True, CYAN)
-                powerup_rect = powerup_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 45))
-                self.screen.blit(powerup_text, powerup_rect)
-            elif self.level == 7:
-                level_up_text = pygame.font.Font(None, 72).render("LEVEL 7!", True, YELLOW)
-                text_rect = level_up_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 120))
-                self.screen.blit(level_up_text, text_rect)
-                
-                warning_text = pygame.font.Font(None, 48).render("ULTIMATE FINAL LEVEL!", True, RED)
-                warning_rect = warning_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 70))
-                self.screen.blit(warning_text, warning_rect)
-                
-                warning_text2 = pygame.font.Font(None, 28).render("ALL ENEMY TYPES ATTACKING!", True, ORANGE)
-                warning_rect2 = warning_text2.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 40))
-                self.screen.blit(warning_text2, warning_rect2)
-                
-                warning_text3 = pygame.font.Font(None, 28).render("Ground Enemies, Flying Enemies,", True, WHITE)
-                warning_rect3 = warning_text3.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 - 10))
-                self.screen.blit(warning_text3, warning_rect3)
-                
-                warning_text4 = pygame.font.Font(None, 28).render("Boss Birds & Jumping Mechs!", True, WHITE)
-                warning_rect4 = warning_text4.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 15))
-                self.screen.blit(warning_text4, warning_rect4)
-                
-                powerup_text = pygame.font.Font(None, 32).render("All power-ups available!", True, CYAN)
-                powerup_rect = powerup_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 45))
-                self.screen.blit(powerup_text, powerup_rect)
+                y_offset += 30
+            
+            for info in transition_data['info']:
+                info_text = pygame.font.Font(None, 32).render(info, True, CYAN)
+                info_rect = info_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + y_offset))
+                self.screen.blit(info_text, info_rect)
+                y_offset += 30
+            
+            if False:  # Old hardcoded transition text (keeping as reference)
+                pass
             
             health_text = pygame.font.Font(None, 36).render("Health restored!", True, GREEN)
             health_rect = health_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 70))
@@ -1309,7 +1069,7 @@ class Game:
             score_rect = final_score_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2))
             self.screen.blit(final_score_text, score_rect)
             
-            level_reached_text = self.font.render(f"Level Reached: {self.level}", True, WHITE)
+            level_reached_text = self.font.render(f"Level Reached: {self.level_number}", True, WHITE)
             level_rect = level_reached_text.get_rect(center=(SCREEN_WIDTH//2, SCREEN_HEIGHT//2 + 30))
             self.screen.blit(level_reached_text, level_rect)
             
@@ -1331,7 +1091,7 @@ class Game:
         self.draw_background()
         
         # Draw platforms
-        for platform in self.platforms:
+        for platform in self.current_level.platforms:
             platform.draw(self.screen)
         
         # Draw power-ups
@@ -1343,6 +1103,9 @@ class Game:
         
         for bullet in self.bullets:
             bullet.draw(self.screen)
+            
+        for rain_bullet in self.rain_bullets:
+            rain_bullet.draw(self.screen)
             
         for enemy in self.enemies:
             enemy.draw(self.screen)
