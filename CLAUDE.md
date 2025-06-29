@@ -16,3 +16,8 @@ scroller.py is our main file
 
 ### level.py
 This is our level class which contains level details as well as the enemies in a level.
+
+
+### Development notes
+
+Please don't try to run the program.

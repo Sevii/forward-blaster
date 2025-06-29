@@ -1,4 +1,21 @@
-from .constants import SCREEN_WIDTH, SCREEN_HEIGHT, FPS, WHITE, BLACK, RED, GREEN, BLUE, YELLOW, GRAY, PURPLE, ORANGE, DARK_GRAY, BROWN, CYAN
+from .constants import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    FPS,
+    WHITE,
+    BLACK,
+    RED,
+    GREEN,
+    BLUE,
+    YELLOW,
+    GRAY,
+    PURPLE,
+    ORANGE,
+    DARK_GRAY,
+    BROWN,
+    CYAN,
+)
+
 SCREEN_WIDTH = 1000
 SCREEN_HEIGHT = 600
 FPS = 60
