@@ -552,6 +552,11 @@ class Game:
                 # Restore player health for new level
                 health_bonus = health_bonuses.get(self.level_number, 70)
                 self.player.hp = min(self.player.max_hp, self.player.hp + health_bonus)
+                # Reset player position to starting location
+                self.player.x = 50
+                self.player.y = SCREEN_HEIGHT - 160
+                self.player.vel_x = 0
+                self.player.vel_y = 0
                 break
     
             
