@@ -107,8 +107,6 @@ class Level:
             enemy_config['ground_enemies'] = True
             enemy_config['jumping_bosses'] = True
         elif self.level_number == 5:
-            enemy_config['ground_enemies'] = True
-            enemy_config['flying_enemies'] = True
             enemy_config['boss_enemies'] = True
             enemy_config['jumping_bosses'] = True
         elif self.level_number == 6:
@@ -133,6 +131,9 @@ class Level:
         
         if self.level_number == 6:
             base_rates['flying_enemy_spawn_delay'] = 1500
+        if self.level_number == 5:
+            base_rates['jumping_boss_spawn_delay'] = 3000
+            base_rates['boss_enemy_spawn_delay'] = 3000
         
         return base_rates
     

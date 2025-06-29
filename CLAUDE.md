@@ -13,3 +13,6 @@ The constants folder contains things like colors and screen sizes
 
 ### scroller.py
 scroller.py is our main file
+
+### level.py
+This is our level class which contains level details as well as the enemies in a level.
