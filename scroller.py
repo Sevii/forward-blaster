@@ -50,6 +50,9 @@ class Player:
         self.has_machine_gun = False
         self.machine_gun_timer = 0
         self.machine_gun_duration = 7000  # 7 seconds
+        self.has_penetrator = False
+        self.penetrator_timer = 0
+        self.penetrator_duration = 12000  # 12 seconds
         
     def update(self, keys, platforms):
         # Handle invulnerability
@@ -69,6 +72,12 @@ class Player:
             current_time = pygame.time.get_ticks()
             if current_time - self.machine_gun_timer > self.machine_gun_duration:
                 self.has_machine_gun = False
+        
+        # Handle penetrator power-up timer
+        if self.has_penetrator:
+            current_time = pygame.time.get_ticks()
+            if current_time - self.penetrator_timer > self.penetrator_duration:
+                self.has_penetrator = False
         
         # Horizontal movement
         self.vel_x = 0
@@ -149,6 +158,10 @@ class Player:
         self.has_machine_gun = True
         self.machine_gun_timer = pygame.time.get_ticks()
     
+    def pickup_penetrator(self):
+        self.has_penetrator = True
+        self.penetrator_timer = pygame.time.get_ticks()
+    
     def shoot(self):
         current_time = pygame.time.get_ticks()
         
@@ -161,7 +174,15 @@ class Player:
             self.last_shot = current_time
             bullets = []
             
-            if self.has_shotgun and not self.has_machine_gun:
+            if self.has_penetrator and not self.has_machine_gun:
+                # Penetrator - shoot 2 large penetrating bullets with horizontal offset
+                bullet_x1 = self.x + self.width
+                bullet_x2 = self.x + self.width + 10  # Horizontal offset
+                bullet_y1 = self.y + self.height // 2 - 8
+                bullet_y2 = self.y + self.height // 2 + 8
+                bullets.append(PenetratingBullet(bullet_x1, bullet_y1, 0))
+                bullets.append(PenetratingBullet(bullet_x2, bullet_y2, 0))
+            elif self.has_shotgun and not self.has_machine_gun:
                 # Shotgun - shoot 5 bullets in a cone
                 bullet_x = self.x + self.width
                 bullet_y = self.y + self.height // 2
@@ -208,6 +229,8 @@ class Player:
             # Change color based on active power-ups
             if self.has_machine_gun:
                 color = RED  # Red for machine gun
+            elif self.has_penetrator:
+                color = (150, 50, 255)  # Purple for penetrator
             elif self.has_shotgun:
                 color = CYAN  # Cyan for shotgun
             else:
@@ -222,6 +245,10 @@ class Player:
             gun_color = YELLOW  # Bright yellow for machine gun
             gun_width = 30
             gun_height = 10
+        elif self.has_penetrator:
+            gun_color = (200, 100, 255)  # Purple for penetrator
+            gun_width = 28
+            gun_height = 12
         elif self.has_shotgun:
             gun_color = ORANGE  # Orange for shotgun
             gun_width = 25
@@ -231,7 +258,13 @@ class Player:
             gun_width = 20
             gun_height = 6
             
-        pygame.draw.rect(screen, gun_color, (gun_x, gun_y - gun_height//2, gun_width, gun_height))
+        if self.has_penetrator:
+            # Draw dual barrels for penetrator
+            barrel_height = 4
+            pygame.draw.rect(screen, gun_color, (gun_x, gun_y - 8, gun_width, barrel_height))
+            pygame.draw.rect(screen, gun_color, (gun_x, gun_y + 4, gun_width, barrel_height))
+        else:
+            pygame.draw.rect(screen, gun_color, (gun_x, gun_y - gun_height//2, gun_width, gun_height))
 
 class Bullet:
     def __init__(self, x, y, angle=0):
@@ -253,6 +286,37 @@ class Bullet:
         
     def draw(self, screen):
         pygame.draw.rect(screen, YELLOW, self.get_rect())
+
+class PenetratingBullet:
+    def __init__(self, x, y, angle=0):
+        self.x = x
+        self.y = y
+        self.width = 20
+        self.height = 8
+        self.speed = 4  # Slower than regular bullets
+        self.angle = angle  # Angle in degrees
+        self.vel_x = self.speed * math.cos(math.radians(angle))
+        self.vel_y = self.speed * math.sin(math.radians(angle))
+        self.enemies_hit = []  # Track enemies hit for penetration
+        
+    def update(self):
+        self.x += self.vel_x
+        self.y += self.vel_y
+        
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, self.width, self.height)
+        
+    def draw(self, screen):
+        # Draw as a larger, purple/violet bullet with glow effect
+        center_x = int(self.x + self.width // 2)
+        center_y = int(self.y + self.height // 2)
+        
+        # Outer glow
+        pygame.draw.ellipse(screen, (150, 50, 255), (self.x - 2, self.y - 2, self.width + 4, self.height + 4))
+        # Main bullet
+        pygame.draw.ellipse(screen, (200, 100, 255), self.get_rect())
+        # Inner core
+        pygame.draw.ellipse(screen, WHITE, (self.x + 4, self.y + 2, self.width - 8, self.height - 4))
 
 class PowerUp:
     def __init__(self, x, y, power_type="shotgun"):
@@ -315,6 +379,24 @@ class PowerUp:
                 # "M" for machine gun
                 font = pygame.font.Font(None, 20)
                 text = font.render("M", True, WHITE)
+                text_rect = text.get_rect(center=(center_x, center_y))
+                screen.blit(text, text_rect)
+                
+            elif self.power_type == "penetrator":
+                # Draw penetrator power-up
+                # Outer glow (purple/violet theme)
+                for i in range(3):
+                    glow_color = (150 + i * 30, 50 + i * 20, 255)
+                    pygame.draw.circle(screen, glow_color, (center_x, center_y), 18 - i * 3)
+                
+                # Main icon (dual barrel shape)
+                pygame.draw.rect(screen, (200, 100, 255), (center_x - 8, center_y - 4, 16, 3))
+                pygame.draw.rect(screen, (200, 100, 255), (center_x - 8, center_y + 1, 16, 3))
+                pygame.draw.rect(screen, (150, 50, 255), (center_x - 12, center_y - 3, 4, 6))
+                
+                # "P" for penetrator
+                font = pygame.font.Font(None, 20)
+                text = font.render("P", True, WHITE)
                 text_rect = text.get_rect(center=(center_x, center_y))
                 screen.blit(text, text_rect)
 
@@ -971,8 +1053,8 @@ class Game:
                 powerup_x = platform.x + platform.width // 2 - 15  # Center on platform
                 powerup_y = platform.y - 35  # Above the platform
                 
-                # Randomly choose between shotgun and machine gun
-                power_type = random.choice(["shotgun", "machine_gun"])
+                # Randomly choose between shotgun, machine gun, and penetrator
+                power_type = random.choice(["shotgun", "machine_gun", "penetrator"])
                 powerup = PowerUp(powerup_x, powerup_y, power_type)
                 self.powerups.append(powerup)
             
@@ -1138,44 +1220,84 @@ class Game:
                     self.player.pickup_shotgun()
                 elif powerup.power_type == "machine_gun":
                     self.player.pickup_machine_gun()
+                elif powerup.power_type == "penetrator":
+                    self.player.pickup_penetrator()
                 
         # Check bullet-enemy collisions (ground enemies)
         for bullet in self.bullets[:]:
             for enemy in self.enemies[:]:
                 if bullet.get_rect().colliderect(enemy.get_rect()):
-                    self.bullets.remove(bullet)
-                    self.enemies.remove(enemy)
-                    self.score += 10
-                    break
+                    # Handle penetrating bullets differently
+                    if isinstance(bullet, PenetratingBullet):
+                        # Check if this enemy was already hit by this bullet
+                        if enemy not in bullet.enemies_hit:
+                            bullet.enemies_hit.append(enemy)
+                            self.enemies.remove(enemy)
+                            self.score += 10
+                    else:
+                        # Regular bullet - remove both bullet and enemy
+                        self.bullets.remove(bullet)
+                        self.enemies.remove(enemy)
+                        self.score += 10
+                        break
                     
         # Check bullet-flying enemy collisions
         for bullet in self.bullets[:]:
             for flying_enemy in self.flying_enemies[:]:
                 if bullet.get_rect().colliderect(flying_enemy.get_rect()):
-                    self.bullets.remove(bullet)
-                    self.flying_enemies.remove(flying_enemy)
-                    self.score += 15  # Flying enemies worth more points
-                    break
+                    # Handle penetrating bullets differently
+                    if isinstance(bullet, PenetratingBullet):
+                        # Check if this enemy was already hit by this bullet
+                        if flying_enemy not in bullet.enemies_hit:
+                            bullet.enemies_hit.append(flying_enemy)
+                            self.flying_enemies.remove(flying_enemy)
+                            self.score += 15  # Flying enemies worth more points
+                    else:
+                        # Regular bullet - remove both bullet and enemy
+                        self.bullets.remove(bullet)
+                        self.flying_enemies.remove(flying_enemy)
+                        self.score += 15  # Flying enemies worth more points
+                        break
                     
         # Check bullet-boss enemy collisions
         for bullet in self.bullets[:]:
             for boss_enemy in self.boss_enemies[:]:
                 if bullet.get_rect().colliderect(boss_enemy.get_rect()):
-                    self.bullets.remove(bullet)
-                    if boss_enemy.take_damage():  # Returns True if boss is killed
-                        self.boss_enemies.remove(boss_enemy)
-                        self.score += 50  # Boss enemies worth much more points
-                    break
+                    # Handle penetrating bullets differently
+                    if isinstance(bullet, PenetratingBullet):
+                        # Check if this enemy was already hit by this bullet
+                        if boss_enemy not in bullet.enemies_hit:
+                            bullet.enemies_hit.append(boss_enemy)
+                            if boss_enemy.take_damage():  # Returns True if boss is killed
+                                self.boss_enemies.remove(boss_enemy)
+                                self.score += 50  # Boss enemies worth much more points
+                    else:
+                        # Regular bullet - remove bullet
+                        self.bullets.remove(bullet)
+                        if boss_enemy.take_damage():  # Returns True if boss is killed
+                            self.boss_enemies.remove(boss_enemy)
+                            self.score += 50  # Boss enemies worth much more points
+                        break
                     
         # Check bullet-jumping boss collisions
         for bullet in self.bullets[:]:
             for jumping_boss in self.jumping_bosses[:]:
                 if bullet.get_rect().colliderect(jumping_boss.get_rect()):
-                    self.bullets.remove(bullet)
-                    if jumping_boss.take_damage():  # Returns True if boss is killed
-                        self.jumping_bosses.remove(jumping_boss)
-                        self.score += 100  # Jumping bosses worth even more points
-                    break
+                    # Handle penetrating bullets differently
+                    if isinstance(bullet, PenetratingBullet):
+                        # Check if this enemy was already hit by this bullet
+                        if jumping_boss not in bullet.enemies_hit:
+                            bullet.enemies_hit.append(jumping_boss)
+                            if jumping_boss.take_damage():  # Returns True if boss is killed
+                                self.jumping_bosses.remove(jumping_boss)
+                                self.score += 100  # Jumping bosses worth even more points
+                    else:
+                        # Regular bullet - remove bullet
+                        self.bullets.remove(bullet)
+                        if jumping_boss.take_damage():  # Returns True if boss is killed
+                            self.jumping_bosses.remove(jumping_boss)
+                            self.score += 100  # Jumping bosses worth even more points
+                        break
                     
         # Check player-enemy collisions (ground enemies)
         player_rect = self.player.get_rect()
